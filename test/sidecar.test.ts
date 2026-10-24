@@ -1,3 +1,5 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Config } from "../src/config.js";
@@ -85,4 +87,34 @@ describe("sidecar client, against the real venv", () => {
     const status = await callSidecar<{ ok: boolean }>("health", { probe: 1 }, config, 30_000);
     expect(status.ok).toBe(true);
   });
+
+  it.skipIf(!installed)("loads an FGD outside binDir by absolute path, includes and all", async () => {
+    // Counter-Strike: Source keeps cstrike.fgd and base.fgd in bin/ while its 64-bit
+    // compilers, and so binDir, are in bin/x64/. srctools refuses a path that leaves the
+    // filesystem root, so this used to fail with 'escaped'. Both FGDs here are written by
+    // the test; no game file is involved.
+    const root = mkdtempSync(join(tmpdir(), "hammer-fgd-"));
+    try {
+      const fgds = join(root, "bin");
+      const binDir = join(fgds, "x64");
+      mkdirSync(binDir, { recursive: true });
+      writeFileSync(
+        join(fgds, "base.fgd"),
+        '@BaseClass = Named\n[\n\ttargetname(target_source) : "Name"\n]\n',
+      );
+      writeFileSync(
+        join(fgds, "game.fgd"),
+        '@include "base.fgd"\n\n@PointClass base(Named) = probe_point : "A probe"\n[\n]\n',
+      );
+      const r = await callSidecar<{ keyvalues: { name: string }[] }>(
+        "fgd_class",
+        { binDir, fgd: [join(fgds, "game.fgd")], classname: "probe_point" },
+        config,
+        30_000,
+      );
+      expect(r.keyvalues.map((k) => k.name)).toContain("targetname");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

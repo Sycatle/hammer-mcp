@@ -75,7 +75,14 @@ def load_fgds(
 
     `names` are paths relative to `bin_dir`, so `win64/toolsplusplus.fgd` reaches the ++
     FGD without anything having to be moved next to the game's own.
+
+    An absolute name is opened from its own directory instead. Counter-Strike: Source keeps
+    its FGDs in `bin/` while its 64-bit compilers are in `bin/x64/`, and RawFileSystem
+    refuses any path that leaves its root. Rooting at the file's directory also keeps its
+    `@include "base.fgd"` resolving next to it.
     """
+    import os
+
     names = tuple(names)
     key = f"{bin_dir}::{'|'.join(names)}"
     if key in _CACHE:
@@ -88,7 +95,11 @@ def load_fgds(
     fs = RawFileSystem(bin_dir)
     fgd = FGD()
     for name in names:
-        fgd.parse_file(fs, fs[name], eval_bases=True)
+        if os.path.isabs(name):
+            own = RawFileSystem(os.path.dirname(name))
+            fgd.parse_file(own, own[os.path.basename(name)], eval_bases=True)
+        else:
+            fgd.parse_file(fs, fs[name], eval_bases=True)
     fgd.apply_bases()
 
     result = (fgd, dict(tolerated))
