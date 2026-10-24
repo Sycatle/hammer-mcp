@@ -8,7 +8,7 @@ import { BUILTIN_PROFILES, resolveProfiles } from "../src/games/profile.js";
 import { GameConfigConflict, UnknownGameError, allGames, gameFor } from "../src/games/resolve.js";
 import { runCompile } from "../src/tools/compile.js";
 import { readVmfLint } from "../src/tools/vmf.js";
-import { FIXTURES, ctx, has } from "./support/env.js";
+import { FIXTURES, cssCompilable, ctx, has } from "./support/env.js";
 
 const scratch = mkdtempSync(join(tmpdir(), "hammer-profile-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -173,9 +173,11 @@ describe("the tools say which game they answered about", () => {
     ).rejects.toThrow(UnknownGameError);
   }, 60_000);
 
-  it("refuses to compile against a game whose toolchain it cannot find", async () => {
-    // css is declared in the built-in table and installed nowhere here. The failure this
-    // prevents is a compile that starts, runs wine, and dies on a missing DLL.
+  it.skipIf(cssCompilable)("refuses to compile against a game whose toolchain it cannot find", async () => {
+    // css is declared in the built-in table and, on most machines, installed nowhere. The
+    // failure this prevents is a compile that starts, runs wine, and dies on a missing DLL.
+    // Where css *is* installed there is nothing to refuse, and running anyway would compile
+    // the probe fixture in place -- hence the skip.
     await expect(
       runCompile.handler(
         {
