@@ -72,8 +72,11 @@ export const ConfigFile = z.object({
   /**
    * How the Windows compilers are executed. Decided by measurement, not preference:
    * plain wine was verified to run vbsp/vvis/vrad here on 02/08/2026 (see README).
+   * On Windows the default is `native`, which runs the .exe files directly.
    */
-  backend: z.enum(["wine", "proton"]).default("wine"),
+  backend: z
+    .enum(["wine", "proton", "native"])
+    .default(process.platform === "win32" ? "native" : "wine"),
   /** WINEPREFIX for the `wine` backend. */
   winePrefix: z.string().default(join(homedir(), ".wine")),
   /** Proton entry script, for the `proton` backend. */

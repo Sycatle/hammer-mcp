@@ -59,7 +59,10 @@ export const health = defineTool({
     const binDir = config.gmodBin;
     const binDirExists = existsSync(binDir);
 
-    const wine = await run("wine", ["--version"], { timeoutMs: 10_000 }).catch(() => null);
+    const wine =
+      config.backend === "native"
+        ? null
+        : await run("wine", ["--version"], { timeoutMs: 10_000 }).catch(() => null);
     const sidecar = await probeSidecar(config);
 
     // Never throws: health has to stay callable precisely when the configuration is what

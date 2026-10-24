@@ -22,7 +22,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { run } from "@projectsociety/mcp-core";
 import type { Config } from "../config.js";
-import { ToolchainError } from "./wine.js";
+import { ToolchainError, windowsInvocation } from "./wine.js";
 
 export interface ExternalRun {
   stdout: string;
@@ -66,18 +66,13 @@ export async function runExternalTool(
         `set externalToolsDir to where you keep it. health lists which of these are present.`,
     );
   }
-  if (config.backend !== "wine") {
-    throw new ToolchainError(
-      `backend "${config.backend}" is not implemented; only wine is proven here`,
-    );
-  }
-
   const started = Date.now();
-  const result = await run("wine", [binary, ...args], {
+  const [cmd, cmdArgs, env] = windowsInvocation(config, binary, args);
+  const result = await run(cmd, cmdArgs, {
     cwd: options.where ?? config.externalToolsDir!,
     timeoutMs: options.timeoutMs ?? 300_000,
     ...(options.stdin === undefined ? {} : { input: options.stdin }),
-    env: { ...process.env, WINEPREFIX: config.winePrefix, WINEDEBUG: "-all" },
+    env,
   });
 
   return {
