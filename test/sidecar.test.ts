@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import type { Config } from "../src/config.js";
-import { callSidecar, probeSidecar, SidecarError } from "../src/sidecar/client.js";
+import { callSidecar, probeSidecar, pythonPath, SidecarError } from "../src/sidecar/client.js";
 import { config as sharedConfig, has } from "./support/env.js";
 
 /**
@@ -13,6 +14,30 @@ import { config as sharedConfig, has } from "./support/env.js";
 function configWith(python?: string): Config {
   return { ...sharedConfig, ...(python ? { sidecarPython: python } : {}) } as Config;
 }
+
+describe("where the venv interpreter is looked for", () => {
+  const realPlatform = process.platform;
+  const onPlatform = (platform: string): void => {
+    Object.defineProperty(process, "platform", { value: platform, configurable: true });
+  };
+  afterEach(() => onPlatform(realPlatform));
+  const venv = join(sharedConfig.stateDir, "sidecar-venv");
+
+  it("uses Scripts/python.exe on Windows, which is where venv puts it there", () => {
+    onPlatform("win32");
+    expect(pythonPath(configWith())).toBe(join(venv, "Scripts", "python.exe"));
+  });
+
+  it("uses bin/python everywhere else", () => {
+    onPlatform("linux");
+    expect(pythonPath(configWith())).toBe(join(venv, "bin", "python"));
+  });
+
+  it("lets sidecarPython override both", () => {
+    onPlatform("win32");
+    expect(pythonPath(configWith("D:\\py\\python.exe"))).toBe("D:\\py\\python.exe");
+  });
+});
 
 describe("sidecar client, when it is not installed", () => {
   const broken = configWith("/nonexistent/python");

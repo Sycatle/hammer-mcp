@@ -589,7 +589,7 @@ The dated record of what was tried, measured, and got wrong:
 | `gameProfiles` | `{}` — per-profile overrides: `binDir`, `gameDir`, `plusPlusBinDir`, `fgd`, `branch` |
 | `backend` | `native` on Windows, which runs the `.exe` files directly; `wine` everywhere else |
 | `winePrefix` | `~/.wine` |
-| `sidecarPython` | `<stateDir>/sidecar-venv/bin/python` |
+| `sidecarPython` | `<stateDir>/sidecar-venv/bin/python`, or `Scripts\python.exe` in that venv on Windows |
 | `externalToolsDir` | `<stateDir>/tools` — standalone tools this server drives, such as ficool2's `bsp_rename.exe`. They belong to no game install, so nothing can discover them; `health` lists which are present |
 | `toolAllowlist` | `[]` |
 
