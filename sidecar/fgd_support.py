@@ -14,6 +14,7 @@ keyvalues across every Source game, where GMod's own says 39. It also has no
 from __future__ import annotations
 
 import collections
+import os
 from typing import Any
 
 _CACHE: dict[str, Any] = {}
@@ -81,8 +82,6 @@ def load_fgds(
     refuses any path that leaves its root. Rooting at the file's directory also keeps its
     `@include "base.fgd"` resolving next to it.
     """
-    import os
-
     names = tuple(names)
     key = f"{bin_dir}::{'|'.join(names)}"
     if key in _CACHE:
