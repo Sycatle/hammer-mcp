@@ -64,9 +64,16 @@ can do. It cannot: relight the map (the LIGHTING lump is baked), create geometry
 **To simply add an entity, prefer a GLua manifest** read at `InitPostEntity`: format-agnostic,
 survives a recompile, hot-reloads.
 
-⚠️ **Gate B has not been passed.** Nothing yet proves the current Garry's Mod branch reads `.lmp`
-files at all. The verification protocol, negative control included, is in `docs/gates.md`, in this repository.
-Do not present a lump patch as working before then.
+✅ **Gate B is passed — 15/08/2026.** Garry's Mod reads `maps/<map>_l_0.lmp` on the current
+branch: an `info_target` added by patch to `gm_construct` appeared in the running engine, and
+disappeared when the file was removed. The protocol and its numbers are in `docs/gates.md`, in
+this repository.
+
+⚠️ **What it also measured, and it is the sharp half: the engine does NOT check the patch's
+`mapRevision`.** A patch stamped against an older compile of a map is applied to the new one in
+full, silently, editing entities by names and indices that may have moved. `write_lump_patch`
+refuses to build a mismatched patch and `read_lump_patch_status` reports drift — those two are
+the only check that exists anywhere, so run the second one after any recompile.
 
 ## Building a map from nothing
 

@@ -78,31 +78,87 @@ their own messages have no sample yet.
 
 ## Gate B
 
-**Does Garry's Mod honour `maps/<map>_l_0.lmp`? NOT TESTED.**
+**Does Garry's Mod honour `maps/<map>_l_0.lmp`? — passed 15/08/2026.**
 
-The codec is written and proven against a Valve file (`c1a1_l_0.lmp`, shipped with Half-Life 2),
-but **nothing yet proves the current Garry's Mod branch reads these files at all**. The three
-patches shipped with Half-Life 2 prove Source supported it once, not that Garry's Mod supports it
-today.
+**It does.** Measured on the live dev server, `gm_construct` under `sandbox`, tickrate 33, no
+player connected. The protocol below is the one this section specified before it was run, and it
+was followed except for step 5, which had to be replaced — see *"the control that did not
+control"*.
 
-Verifying it needs an `srcds` restart, on a server shared between sessions. The protocol, run on
-`gm_construct` and never on a production map:
+### The map, before anything
 
-1. `write_lump_patch` with an `info_target` named `hmcp_probe`;
-2. deploy through the sanctioned route into the server tree;
-3. start the server on `gm_construct`;
-4. read the entities from the running engine → expect 1;
-5. **negative control**: `mapRevision + 1`, redeploy, restart → expect 0. That is the step that
-   proves a mechanism rather than a coincidence.
+`gm_construct.bsp` in the server tree: `mapRevision` **1765**, **1227** entities, and
+**zero `info_target`**. That last number is what makes the probe conclusive: any `info_target` in
+the running engine can only have come from the patch.
 
-If it fails, the fallback is a Lua manifest read at `InitPostEntity`. Worth noting that even if the
-gate passes, the manifest stays preferable for **adding** an entity: it is format-agnostic, it
-survives a recompile, and it hot-reloads. The `.lmp`'s own advantage is narrow but real — **editing
-or deleting an entity the map itself spawns**, before it spawns, keyvalues included.
+### The patch
+
+```
+write_lump_patch  bsp=srcds/garrysmod/maps/gm_construct.bsp
+                  ops=[{op:"add", keyvalues:{classname:"info_target",
+                                             targetname:"hmcp_probe", origin:"0 0 64"}}]
+  -> server-config/maps/gm_construct_l_0.lmp   197 009 B
+     entitiesBefore 1227   entitiesAfter 1228
+```
+
+Deployed by the sanctioned route, `./tools/sync-server-config.sh`, which copies
+`server-config/` over `srcds/garrysmod/` — nothing of ours is ever written into the SteamCMD tree
+by hand. `read_lump_patch` on the deployed file reads it back whole: `lumpID 0`, `lumpVersion 0`,
+`lumpLength 196 989`, `mapRevision 1765`, 1228 entities, NUL-terminated.
+
+### The result
+
+Read from the running engine with `run_lua`, `gmod-mcp`:
+
+| | `hmcp_probe` | `info_target` | entities |
+|---|---|---|---|
+| patch deployed | **1** | **1** | 283 |
+| patch removed, same map, restarted | **0** | **0** | 275 |
+
+```
+class info_target   pos 0.000000 0.000000 64.000000   map gm_construct
+```
+
+The entity exists if and only if the file is there. **Garry's Mod reads these files today**, and
+`write_lump_patch` can be relied on for what it claims: editing or deleting an entity a map spawns,
+before it spawns.
+
+### The control that did not control, and what it found instead
+
+Step 5 as specified was *"`mapRevision + 1`, redeploy, restart → expect 0"*. It returned **1**.
+
+The deployed bytes were checked afterwards rather than assumed: `mapRevision` **1766** at the head
+of the file, written at 14:49:14, against a `.bsp` stamped **1765**, and the server booted at
+14:51:01 — after. So the answer is not a stale one.
+
+⚠️ **Garry's Mod does not check the `.lmp`'s `mapRevision`.** It applied a patch built against a
+different revision of the map, in full, with nothing said on either side.
+
+That reverses a claim this repository was making in three places, all now corrected: `codec.ts`
+said *"the engine would ignore this patch without any message"*, and `read_lump_patch_status`
+described the failure it catches as a "silent-ignore". The failure is a **silent-apply**, which is
+the worse of the two — a patch left over from an older compile keeps editing the new map by names
+and indices that may since have moved, and neither the engine nor the compiler will mention it.
+`assertRevisionMatches` is therefore not a convenience that anticipates the engine: it is the only
+check that exists anywhere.
+
+Note that the guard had to be bypassed to run this control at all — the revision was changed by
+writing four bytes at offset 16 of the finished `.lmp`, because `write_lump_patch` refuses to
+produce a mismatched one.
+
+The control that does discriminate is the one in the table above: **remove the file**. It proves
+the mechanism rather than the revision field, which is what the gate was actually about.
+
+### What was left behind
+
+Nothing. Both the deployed `.lmp` and its source in `server-config/maps/` were removed after the
+run; the two commands above rebuild them in seconds. The server was returned to
+`rp_nycity_day` / `darkrp` / 33, the state it was found in.
 
 ## What a lump patch cannot do
 
-Even once gate B passes, three limits are structural rather than incidental:
+Gate B is passed, and these three limits are structural rather than incidental — none of
+them moves:
 
 - **It cannot relight the map.** The LIGHTING lump is baked by vrad at compile time; adding a
   `light` entity through a patch changes nothing in game.

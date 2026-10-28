@@ -188,7 +188,8 @@ cheapest real improvement this map has, and it is the argument for route A exist
 ⚠️ **Two caveats, stated because neither was tested.** These are read from the entity lump, not
 observed in a running game: what a `point_template` with `spawnflags 3` does on repeated
 `ForceSpawn` is documented behaviour, not measured behaviour here. And a lump patch has not
-been proven to load at all on the current Garry's Mod branch — that is gate B, still open, in
+been proven to load at all on the current Garry's Mod branch — that was gate B, **passed
+15/08/2026**, in
 [`docs/gates.md`](../../gates.md).
 
 ## Twenty-one megabytes of the twenty-seven are five files and a dead set
@@ -288,7 +289,8 @@ new first item is one the first pass could not see.
 
 1. **Delete the 640 unnamed `env_sprite`, by lump patch.** 1838 edicts → 1198, and the margin
    against `MAX_EDICTS` goes from 210 to 850. Nothing else on this list changes a number by
-   that much, and it needs no source, no compiler and no decompile. Gate B first.
+   that much, and it needs no source, no compiler and no decompile. Gate B is passed, so the
+   route is open.
 2. **The four wiring defects**, same patch, same mechanism: `bar_2_windows_timer` retargeted,
    `store_4`'s timer and template supplied, an `env_tonemap_controller` named `tonemap` added,
    `bar_template` filled or its button unwired.

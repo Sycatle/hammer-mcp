@@ -61,8 +61,12 @@ describe("lmp codec", () => {
   it("refuses a revision that does not match the target BSP", () => {
     const bsp = readHeader(PROBE);
     const wrong = decodeLmp(encodeLmp("{}", { lumpID: 0, mapRevision: bsp.mapRevision + 1 }));
-    // The engine's own answer to this is silence, so we refuse at write time instead.
+    // Gate B, 15/08/2026: the engine's answer to a mismatch is not silence, it is to
+    // apply the patch anyway -- measured on gm_construct with a patch stamped one revision
+    // ahead. So this guard is the ONLY thing between a stale patch and a recompiled map,
+    // and the message has to say that rather than promising the engine will decline.
     expect(() => assertRevisionMatches(wrong.header, bsp)).toThrow(/mapRevision mismatch/);
+    expect(() => assertRevisionMatches(wrong.header, bsp)).toThrow(/does NOT check/);
 
     const right = decodeLmp(encodeLmp("{}", { lumpID: 0, mapRevision: bsp.mapRevision }));
     expect(() => assertRevisionMatches(right.header, bsp)).not.toThrow();

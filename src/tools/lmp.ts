@@ -162,8 +162,10 @@ export const readLumpPatchStatus = defineTool({
   name: "read_lump_patch_status",
   description:
     "For each patch in server-config/maps/, reports whether it is deployed under srcds and " +
-    "whether its mapRevision still matches the .bsp it targets. Catches the silent-ignore " +
-    "failure before a server restart rather than after one.",
+    "whether its mapRevision still matches the .bsp it targets. That check is the only one " +
+    "there is: gate B measured Garry's Mod applying a patch whose revision disagrees with " +
+    "the map, in full and without a word, so a patch left over from an older compile keeps " +
+    "editing the new one by names and indices that may have moved.",
   realm: "map",
   inputSchema: {
     bspSearchPaths: z

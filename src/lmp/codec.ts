@@ -105,15 +105,24 @@ export function encodeLmp(payload: Buffer | string, opts: EncodeLmpOptions): Buf
 /**
  * Refuses a patch whose revision does not match the BSP it targets.
  *
- * Called at WRITE time rather than left to the engine, because the engine's answer is
- * silence: the failure surfaces as "my edits did nothing" after a server restart, which
- * is the most expensive place to learn it.
+ * This used to say the engine would ignore such a patch, and gate B measured the opposite
+ * on 15/08/2026: Garry's Mod **applies it anyway**. A patch stamped 1766 against a
+ * `gm_construct.bsp` stamped 1765 spawned its entity exactly as a matching one does, with
+ * nothing said on either side.
+ *
+ * That makes the check more necessary rather than less, and for the reverse reason. The
+ * danger is not that edits quietly do nothing; it is that a patch built against an older
+ * version of a map keeps being applied to a recompiled one, adding, editing and deleting
+ * entities by an index and a name that may since have moved. Nothing in the engine will
+ * mention it, so this is the only place it can be caught.
  */
 export function assertRevisionMatches(header: LmpHeader, bsp: BspHeader): void {
   if (header.mapRevision !== bsp.mapRevision) {
     throw new LmpFormatError(
       `mapRevision mismatch: patch says ${header.mapRevision}, ${bsp.path} says ${bsp.mapRevision}. ` +
-        `The engine would ignore this patch without any message.`,
+        `Garry's Mod does NOT check this -- gate B measured it applying a mismatched ` +
+        `patch in full -- so a patch built against an older compile of this map would be ` +
+        `applied to the new one, silently. Rebuild the patch from the current .bsp.`,
     );
   }
 }
