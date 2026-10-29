@@ -8,6 +8,12 @@ That last one is the nastiest. A relative path resolves against wine's working d
 then compiles **a different file, without error**. So `toWindowsPath` refuses a relative path
 rather than converting it.
 
+On Windows none of that applies, because there is no wine: the `native` backend, the default
+there, runs the `.exe` directly with the same working directory, and `toWindowsPath` leaves a
+path that already carries a drive letter on that drive. Measured on 24/10/2026 on Windows 11 with
+Counter-Strike: Source's stock 64-bit compilers (`bin/x64/`, vbsp built Nov 7 2025): vbsp, vvis
+and vrad all ran, and a sealed 63-brush map compiled clean.
+
 `run_compile` **stops at the first stage that fails.** Running vvis after a leak spends an hour
 computing a visibility set that means nothing.
 

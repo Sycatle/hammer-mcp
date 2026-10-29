@@ -22,6 +22,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Config } from "../../src/config.js";
 import { loadConfig } from "../../src/config.js";
+import { allGames } from "../../src/games/resolve.js";
 import { pythonPath } from "../../src/sidecar/client.js";
 
 export const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "fixtures");
@@ -108,6 +109,17 @@ export const has = {
   /** VTFCmd, the command-line half of VTFEdit++. Needs DevIL.dll beside it. */
   vtfcmd: existsSync(join(config.externalToolsDir ?? join(config.stateDir, "tools"), "VTFCmd.exe")),
 } as const;
+
+/**
+ * Whether Counter-Strike: Source resolves to a toolchain it can compile with here.
+ *
+ * Not in `has`: the tests that read it need CS:S to be *absent*, so false is the normal
+ * case and must not be announced as something missing. When it is true, a test that
+ * expects a compile against css to be refused would instead run a real one -- and the
+ * one that does compiles test/fixtures/hmcp_probe.vmf in place, overwriting the probe
+ * .bsp that the BSP readers' tests assert against.
+ */
+export const cssCompilable = allGames(config)["css"]?.unusableForCompile === null;
 
 const LABELS: Record<keyof typeof has, string> = {
   toolchain: `the stock Source compilers (${config.gmodBin})`,

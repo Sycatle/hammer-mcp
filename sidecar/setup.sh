@@ -12,14 +12,27 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="${HAMMER_MCP_REPO:-$(cd "$here/../.." && pwd)}"
 venv="$repo_root/.hammer-mcp/sidecar-venv"
 
-if [[ ! -x "$venv/bin/python" ]]; then
+# Windows (Git Bash / MSYS) venvs put the interpreter in Scripts/, and `python3` there is
+# often the Microsoft Store stub rather than a real interpreter. PYTHON overrides either.
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*)
+    venv_python="$venv/Scripts/python.exe"
+    base_python="${PYTHON:-python}"
+    ;;
+  *)
+    venv_python="$venv/bin/python"
+    base_python="${PYTHON:-python3}"
+    ;;
+esac
+
+if [[ ! -x "$venv_python" ]]; then
   echo "creating venv: $venv"
-  python3 -m venv "$venv"
+  "$base_python" -m venv "$venv"
 fi
 
-"$venv/bin/python" -m pip install --quiet --upgrade pip
-"$venv/bin/python" -m pip install --quiet -r "$here/requirements.txt"
+"$venv_python" -m pip install --quiet --upgrade pip
+"$venv_python" -m pip install --quiet -r "$here/requirements.txt"
 
 echo -n "sidecar ready: "
-"$venv/bin/python" "$here/main.py" health </dev/null
+"$venv_python" "$here/main.py" health </dev/null
 echo

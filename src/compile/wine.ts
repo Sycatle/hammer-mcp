@@ -13,8 +13,12 @@ export class ToolchainError extends Error {}
  * Wine maps `Z:` to `/`, so `/home/x` becomes `Z:\home\x`. This is not cosmetic: a
  * relative path is resolved against wine's own working directory, and vbsp then compiles
  * a different file than the one asked for, silently and successfully.
+ *
+ * A path that is already a Windows drive path (the `native` backend, on Windows) only has
+ * its separators normalised: prefixing it with `Z:` would produce `Z:C:\...`.
  */
 export function toWindowsPath(path: string): string {
+  if (/^[A-Za-z]:[\\/]/.test(path)) return path.replace(/\//g, "\\");
   if (!isAbsolute(path)) {
     throw new ToolchainError(
       `${path}: the Source compilers need an absolute path, because a relative one ` +
@@ -155,22 +159,9 @@ export async function runCompiler(
           `chain is unaffected, and run_compile falls back to it. See health`,
     );
   }
-  if (config.backend !== "wine") {
-    throw new ToolchainError(
-      `backend "${config.backend}" is not implemented; only wine is proven here`,
-    );
-  }
-
   const started = Date.now();
-  const result = await run("wine", [binary, ...args], {
-    cwd: dir,
-    timeoutMs,
-    env: {
-      ...process.env,
-      WINEPREFIX: config.winePrefix,
-      WINEDEBUG: "-all",
-    },
-  });
+  const [cmd, cmdArgs, env] = windowsInvocation(config, binary, args);
+  const result = await run(cmd, cmdArgs, { cwd: dir, timeoutMs, env });
 
   return {
     ...result,
@@ -178,4 +169,37 @@ export async function runCompiler(
     args: [...args],
     durationMs: Date.now() - started,
   };
+}
+
+/**
+ * The command line that executes a Windows binary under the configured backend.
+ *
+ * `native` runs the .exe directly and only means something on Windows. `wine` keeps the
+ * two settings measured as load-bearing: `WINEPREFIX`, and `WINEDEBUG=-all` so wine's
+ * `fixme:` lines do not bury the tool's own output.
+ */
+export function windowsInvocation(
+  config: Config,
+  binary: string,
+  args: readonly string[],
+): [string, string[], NodeJS.ProcessEnv] {
+  if (config.backend === "native") {
+    if (process.platform !== "win32") {
+      throw new ToolchainError(
+        `backend "native" runs the Windows binaries directly and needs Windows; ` +
+          `this is ${process.platform}`,
+      );
+    }
+    return [binary, [...args], process.env];
+  }
+  if (config.backend !== "wine") {
+    throw new ToolchainError(
+      `backend "${config.backend}" is not implemented; only wine and native are proven here`,
+    );
+  }
+  return [
+    "wine",
+    [binary, ...args],
+    { ...process.env, WINEPREFIX: config.winePrefix, WINEDEBUG: "-all" },
+  ];
 }

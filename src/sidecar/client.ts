@@ -27,7 +27,10 @@ function scriptPath(): string {
 
 /** The interpreter of the venv `sidecar/setup.sh` builds, unless configured otherwise. */
 export function pythonPath(config: Config): string {
-  return config.sidecarPython ?? join(config.stateDir, "sidecar-venv", "bin", "python");
+  // A Windows venv keeps its interpreter in Scripts\python.exe, not bin/python.
+  const venvPython =
+    process.platform === "win32" ? join("Scripts", "python.exe") : join("bin", "python");
+  return config.sidecarPython ?? join(config.stateDir, "sidecar-venv", venvPython);
 }
 
 interface SidecarFault {
