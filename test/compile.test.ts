@@ -1,7 +1,7 @@
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { readGeometry } from "../src/bsp/geometry.js";
 import { locateLeak, readPointfile } from "../src/compile/leak.js";
@@ -13,6 +13,7 @@ import {
   ToolchainError,
   toolchainDir,
   toWindowsPath,
+  windowsInvocation,
 } from "../src/compile/wine.js";
 import type { MapEntity } from "../src/entity/model.js";
 import type { ToolContext } from "../src/mcp/registry.js";
@@ -33,6 +34,49 @@ describe("Windows path conversion", () => {
     // The failure this prevents is silent: wine resolves a relative path against its
     // own working directory, and vbsp then compiles a different file successfully.
     expect(() => toWindowsPath("maps/foo.vmf")).toThrow(ToolchainError);
+  });
+
+  it("leaves a drive path on its drive, normalising only the separators", () => {
+    // On Windows the path already is a Windows path. Prefixing Z: would hand vbsp
+    // "Z:C:\...", which names no file at all.
+    expect(toWindowsPath("C:/Steam/cstrike/maps/foo.vmf")).toBe("C:\\Steam\\cstrike\\maps\\foo.vmf");
+    expect(toWindowsPath("D:\\maps\\foo.vmf")).toBe("D:\\maps\\foo.vmf");
+  });
+});
+
+describe("how a Windows binary is executed", () => {
+  const realPlatform = process.platform;
+  const onPlatform = (platform: string): void => {
+    Object.defineProperty(process, "platform", { value: platform, configurable: true });
+  };
+  afterEach(() => onPlatform(realPlatform));
+
+  const binary = "C:\\game\\bin\\vbsp.exe";
+  const withBackend = (backend: string) => ({ ...config, backend }) as typeof config;
+
+  it("runs the binary itself under the native backend on Windows", () => {
+    onPlatform("win32");
+    const [cmd, args, env] = windowsInvocation(withBackend("native"), binary, ["-game", "x"]);
+    expect(cmd).toBe(binary);
+    expect(args).toEqual(["-game", "x"]);
+    expect(env.WINEDEBUG).toBe(process.env.WINEDEBUG);
+  });
+
+  it("refuses the native backend anywhere but Windows", () => {
+    onPlatform("linux");
+    expect(() => windowsInvocation(withBackend("native"), binary, [])).toThrow(/needs Windows/);
+  });
+
+  it("keeps wine's prefix and silences its fixme lines under the wine backend", () => {
+    const [cmd, args, env] = windowsInvocation(withBackend("wine"), binary, ["-game", "x"]);
+    expect(cmd).toBe("wine");
+    expect(args).toEqual([binary, "-game", "x"]);
+    expect(env.WINEDEBUG).toBe("-all");
+    expect(env.WINEPREFIX).toBe(config.winePrefix);
+  });
+
+  it("still refuses proton, which nothing here has run", () => {
+    expect(() => windowsInvocation(withBackend("proton"), binary, [])).toThrow(ToolchainError);
   });
 });
 

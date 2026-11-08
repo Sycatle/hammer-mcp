@@ -169,7 +169,7 @@ def _pakfile_extract(req: dict[str, Any]) -> dict[str, Any]:
 
 
 def _fgd_names(req: dict[str, Any]) -> tuple[str, ...]:
-    """Which FGDs to check against, relative to `binDir`.
+    """Which FGDs to check against, relative to `binDir` or absolute.
 
     A list rather than one name since Hammer++ ships its own. The caller decides -- it is
     the side that knows which files exist -- and the reply names what was loaded, so the

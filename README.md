@@ -5,7 +5,7 @@
 
 An MCP server for Source-engine map work. It reads `.vmf` and `.bsp` files, lints a map against
 the game's own FGD, edits a `.vmf` without reformatting it, patches a compiled map's entities
-without recompiling, drives the compilers under Wine — **Hammer++ by default**, stock on demand or
+without recompiling, drives the compilers under Wine or natively on Windows — **Hammer++ by default**, stock on demand or
 as a fallback — and measures a map
 against the limits of the format.
 
@@ -56,7 +56,7 @@ flowchart LR
 | **Edit** | entities, keyvalues and outputs of a `.vmf`, by splicing byte ranges — untouched bytes stay untouched |
 | **Build** | brushes from a shape description, wound and textured the way vbsp expects, refused unless they close |
 | **Optimise** | `func_detail`, hint brushes including diagonal ones, per-face lightmap scale — the decisions a compiled map no longer contains |
-| **Compile** | vbsp/vvis/vrad under Wine, findings per stage, and a leak turned into a named entity |
+| **Compile** | vbsp/vvis/vrad under Wine (natively on Windows), findings per stage, and a leak turned into a named entity |
 | **Ship** | resolve every asset a map references and find what will be missing, pack them into a `.bsp` — by hand or derived from the map — check a nav mesh still matches |
 | **Open** | a Workshop `.gma`: read its index, pull one map out of a gigabyte without unpacking the rest |
 | **Patch without recompiling** | rewrite a compiled map's entity list through a `.lmp` |
@@ -433,7 +433,7 @@ source. On 13/08/2026 this cost twelve tools and forty minutes —
 |---|---|---|
 | Node ≥ 20 | everything | nothing starts |
 | Python 3 + [`srctools`](https://github.com/TeamSpen210/srctools) | VMF, FGD, pakfile | those tools only |
-| Wine (measured on 9.0) | `run_compile`, `run_pack` | those two only |
+| Wine (measured on 9.0), except on Windows | `run_compile`, `run_pack` | those two only |
 | A Source game with its compilers | same | same |
 
 ⚠️ **The compilers ship with the game *client*, never with a dedicated server.** `srcds/bin/` has
@@ -530,7 +530,7 @@ holds, and a tool not on the list keeps both gates, which stays the default.
 | `run_cubemap2hdr` | `local` | ● | Turns an LDR cubemap into the HDR one Source loads in HDR mode. Refuses anything but DXT1 up front, naming the format the file actually is || `run_vtf_convert` | `local` | ● | Turns a `.tga`/`.png`/`.bmp` into a `.vtf`, and reports the format that actually came out rather than the one asked for. Drives VTFCmd from ficool2's VTFEdit++ |
 | `run_tga2skybox` | `local` | ● | Builds a cubemap `.vtf` from six TGA faces, LDR **and** HDR — the half of cubemap work that does not need the engine running. Drives ficool2's `tga2skybox` |
 | `run_bsp_rename` | `local` | ● | Renames a compiled `.bsp` **and the content packed inside it** — the nodegraph, cubemap patches, soundscripts. Drives ficool2's `bsp_rename`, a separate download; `health` says whether it is there |
-| `run_compile` | `local` | ● | vbsp, vvis and vrad under Wine, findings per stage. Drives the **Hammer++ chain by default**, with its culling flags; falls back to the stock compilers when Hammer++ is absent and says which one ran |
+| `run_compile` | `local` | ● | vbsp, vvis and vrad under Wine, or natively on Windows, findings per stage. Drives the **Hammer++ chain by default**, with its culling flags; falls back to the stock compilers when Hammer++ is absent and says which one ran |
 | `read_compile_log` | `map` | | Turns compiler output into findings, each with what the message actually means |
 | `read_leak` | `map` | | Turns `**** leaked ****` into a position and a named entity |
 | `read_map_dependencies` | `map` | | Every asset a map references, and whether each will be there: packed, from the game, or missing |
@@ -587,9 +587,9 @@ The dated record of what was tried, measured, and got wrong:
 |---|---|
 | `game` | `gmod` — the profile used when a call does not name one |
 | `gameProfiles` | `{}` — per-profile overrides: `binDir`, `gameDir`, `plusPlusBinDir`, `fgd`, `branch` |
-| `backend` | `wine` |
+| `backend` | `native` on Windows, which runs the `.exe` files directly; `wine` everywhere else |
 | `winePrefix` | `~/.wine` |
-| `sidecarPython` | `<stateDir>/sidecar-venv/bin/python` |
+| `sidecarPython` | `<stateDir>/sidecar-venv/bin/python`, or `Scripts\python.exe` in that venv on Windows |
 | `externalToolsDir` | `<stateDir>/tools` — standalone tools this server drives, such as ficool2's `bsp_rename.exe`. They belong to no game install, so nothing can discover them; `health` lists which are present |
 | `toolAllowlist` | `[]` |
 
