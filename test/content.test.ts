@@ -1,8 +1,10 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ToolContext } from "../src/mcp/registry.js";
+import { callSidecar } from "../src/sidecar/client.js";
 import { readGameContentTool, readModelInfoTool } from "../src/tools/content.js";
 import { readSourceGames as readSourceGamesTool } from "../src/tools/games.js";
-import { ctx as sharedCtx, has } from "./support/env.js";
+import { ctx as sharedCtx, FIXTURES, has } from "./support/env.js";
 
 const ctx = sharedCtx as unknown as ToolContext;
 const ready = has.sidecar && has.gameContent;
@@ -27,6 +29,7 @@ interface SearchReply {
   truncated?: boolean;
   results: Array<{
     path: string;
+    source?: "vpk" | "loose";
     name?: string;
     shader?: string | null;
     toolTexture?: boolean;
@@ -150,6 +153,57 @@ describe("read_game_content", () => {
     expect(r.total).toBe(0);
     expect(r.results).toEqual([]);
   }, VPK_SEARCH_TIMEOUT);
+
+  /**
+   * #112. A match is not evidence a player has it. On a Counter-Strike: Source install a
+   * quarter of the VMTs a search could return were in `cstrike/download`, sent by servers
+   * once visited, and most of them resolve -- so nothing in a row told them from stock.
+   *
+   * Tested on test/fixtures/split_game (see gen_split_game.py), which has one material in a
+   * VPK and one material and one model on disk by construction: a real install would pin
+   * one machine's download/ folder.
+   */
+  describe("where a match comes from (#112)", () => {
+    const SPLIT = join(FIXTURES, "split_game");
+    const inSplit = (args: Record<string, unknown>): Promise<SearchReply> =>
+      callSidecar<SearchReply>(
+        "search_content",
+        { gameDir: SPLIT, kind: "material", limit: 100, ...args },
+        ctx.config,
+        VPK_SEARCH_TIMEOUT,
+      );
+
+    it.skipIf(!has.sidecar)("calls a material inside a VPK vpk, and one on disk loose", async () => {
+      const r = await inSplit({ pattern: "hmcp" });
+      expect(r.mounted).toBe(true);
+      expect(r.results.map((x) => [x.path, x.source])).toEqual([
+        ["materials/hmcp/ondisk.vmt", "loose"],
+        ["materials/hmcp/packed.vmt", "vpk"],
+      ]);
+    }, VPK_SEARCH_TIMEOUT);
+
+    it.skipIf(!has.sidecar)("labels models too, not only materials", async () => {
+      const r = await inSplit({ pattern: "hmcp", kind: "model" });
+      expect(r.results.map((x) => [x.path, x.source])).toEqual([
+        ["models/hmcp/ondisk.mdl", "loose"],
+      ]);
+    }, VPK_SEARCH_TIMEOUT);
+
+    it.skipIf(!has.sidecar)("labels without being asked for details", async () => {
+      // A lookup per returned row and no VMT parsed, so it is on by default: the caller who
+      // most needs it is the one who did not think to ask.
+      const plain = await inSplit({ pattern: "hmcp/packed" });
+      const detailed = await inSplit({ pattern: "hmcp/packed", details: true });
+      expect(plain.results[0]!.source).toBe("vpk");
+      expect(detailed.results[0]!.source).toBe("vpk");
+    }, VPK_SEARCH_TIMEOUT);
+
+    it.skipIf(!ready)("calls a stock material vpk in the real game", async () => {
+      const r = await search({ pattern: "brick/brickwall001a" });
+      const hit = r.results.find((x) => x.path === "materials/brick/brickwall001a.vmt");
+      expect(hit?.source).toBe("vpk");
+    }, VPK_SEARCH_TIMEOUT);
+  });
 });
 
 describe("a game profile that is not installed", () => {
