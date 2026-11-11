@@ -1,0 +1,13 @@
+"GameInfo"
+{
+	game	"hmcp split game"
+	FileSystem
+	{
+		SteamAppId	4000
+		SearchPaths
+		{
+			game+mod	|gameinfo_path|pak.vpk
+			game+mod	|gameinfo_path|.
+		}
+	}
+}

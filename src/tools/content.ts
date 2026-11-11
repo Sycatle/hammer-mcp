@@ -18,7 +18,11 @@ export const readGameContentTool = defineTool({
     "A .vmt being present is NOT the same as the material drawing: NATURE/BLENDGRASSDIRT01 " +
     "ships with Garry's Mod and the three .vtf it points at do not, which is the same purple " +
     "checkerboard by another route. Pass details to resolve every texture a material names " +
-    "and get `resolves` with what is missing. Needs the Python sidecar; see health.",
+    "and get `resolves` with what is missing. Every result also carries `source`: `vpk` is " +
+    "inside an archive the game ships, so every player has it; `loose` is a plain file on " +
+    "this disk -- a mapper's own, a custom/ install, or one a server sent into download/ -- " +
+    "and reaches a player only if the map packs it (run_pack auto does). Needs the Python " +
+    "sidecar; see health.",
   realm: "map",
   inputSchema: {
     pattern: z
@@ -54,6 +58,12 @@ export const readGameContentTool = defineTool({
     results: z.array(
       z.object({
         path: z.string(),
+        /**
+         * Where the copy the engine would load lives (#112). `vpk`: a game archive, on
+         * every player's machine. `loose`: a file on this disk, which is not -- the same
+         * split read_map_dependencies reports as game-vpk / game-loose.
+         */
+        source: z.enum(["vpk", "loose"]),
         /** Materials only: the name as a .vmf writes it. */
         name: z.string().optional(),
         shader: z.string().nullable().optional(),

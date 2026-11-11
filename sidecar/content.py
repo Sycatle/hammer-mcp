@@ -106,6 +106,29 @@ def _present(fsys: Any, path: str) -> bool:
     return True
 
 
+def _source(fsys: Any, rel: str) -> str:
+    """`vpk` when the copy the engine would load is inside an archive, `loose` when on disk.
+
+    A match is not evidence a player has it (#112). On a Counter-Strike: Source install a
+    quarter of the VMTs a search could return sat in `cstrike/download` -- sent by servers
+    once visited -- and most of them resolve, so `resolves` cannot tell them from stock.
+    `loose` covers that, `custom/` and a mapper's own files alike: srctools drops the
+    gameinfo labels that would separate them, and all three need packing to reach a player.
+
+    The same test `read_map_dependencies` applies, imported, so the two cannot disagree. A
+    lookup per returned row, at most `limit`, and no VMT parsed: cheap enough to be default.
+    """
+    from dependencies import is_archive
+
+    try:
+        found = fsys[rel]
+    except Exception:  # noqa: BLE001
+        # The walk just listed it, so this is not expected. Unknown provenance reads as an
+        # archive, exactly as is_archive itself treats it.
+        return "vpk"
+    return "vpk" if is_archive(fsys, found) else "loose"
+
+
 def _material_details(fsys: Any, rel: str) -> dict[str, Any]:
     """Shader, base texture, surface properties -- and whether the thing will actually draw.
 
@@ -225,7 +248,7 @@ def search_content(req: dict[str, Any]) -> dict[str, Any]:
 
     results: list[dict[str, Any]] = []
     for rel in shown:
-        row: dict[str, Any] = {"path": rel}
+        row: dict[str, Any] = {"path": rel, "source": _source(fsys, rel)}
         if kind == "material":
             row["name"] = _vmf_name(rel)
             if want_details:

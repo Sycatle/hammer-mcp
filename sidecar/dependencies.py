@@ -118,6 +118,25 @@ def _under_materials(name: str, ext: str) -> str:
     return rel
 
 
+def is_archive(game_fs: Any, found: Any) -> bool:
+    """Whether a file the mounted chain returned came out of an archive rather than off disk.
+
+    Module-level so `content.py` asks the same question the same way: `read_game_content`
+    labelling a file stock while `read_map_dependencies` calls it a packing candidate is the
+    disagreement #112 exists to remove.
+    """
+    try:
+        from srctools.filesys import RawFileSystem
+
+        owner = game_fs.get_system(found)
+        return not isinstance(owner, RawFileSystem)
+    except Exception:  # noqa: BLE001
+        # Unknown provenance is reported as an archive: the cost of guessing wrong
+        # that way is a file left unpacked that was already there, while the other
+        # way is a packing list full of Valve's own content.
+        return True
+
+
 class Resolver:
     """Reads an asset from the map's pakfile first, then the game's mounted content."""
 
@@ -163,16 +182,7 @@ class Resolver:
         return None
 
     def _is_archive(self, found: Any) -> bool:
-        try:
-            from srctools.filesys import RawFileSystem
-
-            owner = self.game_fs.get_system(found)
-            return not isinstance(owner, RawFileSystem)
-        except Exception:  # noqa: BLE001
-            # Unknown provenance is reported as an archive: the cost of guessing wrong
-            # that way is a file left unpacked that was already there, while the other
-            # way is a packing list full of Valve's own content.
-            return True
+        return is_archive(self.game_fs, found)
 
     def disk_path(self, rel: str) -> str | None:
         """Where a loose file actually is, so a packing list can name it."""
