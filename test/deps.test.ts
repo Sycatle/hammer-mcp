@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { ToolContext } from "../src/mcp/registry.js";
 import { readMapDependenciesTool } from "../src/tools/deps.js";
 import { callSidecar } from "../src/sidecar/client.js";
-import { config, ctx as sharedCtx, FIXTURES, has, paths } from "./support/env.js";
+import { config, ctx as sharedCtx, FIXTURES, GAME, has, paths } from "./support/env.js";
 
 const PROBE = join(FIXTURES, "hmcp_probe.bsp");
 const ctx = sharedCtx as unknown as ToolContext;
@@ -147,9 +147,37 @@ describe.skipIf(!has.sidecar)("loose files versus VPK content", () => {
   it("calls the same material VPK content when it comes from the real game", async () => {
     const r = await call(config.gmodGameDir);
     expect(r.bySource["game-vpk"] ?? 0).toBeGreaterThan(0);
-    // Not zero: Garry's Mod ships detail.vbsp loose in its own root. That is the measured
-    // reason a loose file is a candidate for packing rather than proof of a custom asset,
-    // and it is pinned here so the claim in the docs has something holding it up.
-    expect(r.loose.map((f) => f.path)).toEqual(["detail.vbsp"]);
+    // Whatever a game keeps loose, each one named has to be a real file: the disk path is
+    // what run_pack auto hands to bspzip. Holds for every game, unlike the list itself.
+    for (const f of r.loose) {
+      expect(f.diskPath, f.path).not.toBeNull();
+      expect(existsSync(f.diskPath!), f.diskPath!).toBe(true);
+    }
   }, 300_000);
+
+  /**
+   * Which of the probe's files a game keeps loose, measured per game, because the answer is
+   * the game's and not the code's (#109).
+   *
+   * Garry's Mod ships detail.vbsp loose in its own root. That is the measured reason a loose
+   * file is a candidate for packing rather than proof of a custom asset, and it is pinned
+   * here so the claim in the docs has something holding it up.
+   *
+   * Counter-Strike: Source has a loose `cstrike/detail.vbsp` too -- and a copy inside
+   * cstrike_pak.vpk, which its gameinfo mounts first, so the VPK answers and nothing is
+   * loose. Same file, other answer: what decides it is search-path order, not the file.
+   */
+  const LOOSE: Record<string, string[]> = {
+    gmod: ["detail.vbsp"],
+    css: [],
+  };
+
+  it.skipIf(!has.gameContent || !LOOSE[GAME])(
+    "keeps loose exactly the files this game is measured to keep loose",
+    async () => {
+      const r = await call(config.gmodGameDir);
+      expect(r.loose.map((f) => f.path)).toEqual(LOOSE[GAME]);
+    },
+    300_000,
+  );
 });

@@ -32,6 +32,16 @@ const ctx = sharedCtx as unknown as ToolContext;
 const scratch = mkdtempSync(join(tmpdir(), "hammer-skeleton-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
+/**
+ * Every map `write_vmf` creates has its sky looked up in the game, through the sidecar: a
+ * fresh Python process that mounts the game's VPKs and walks `materials/skybox`. That is
+ * well under a second, but not a duration anything here promises -- before #109 the walk
+ * covered the whole game and took 8 s on a Counter-Strike: Source install, and Vitest's
+ * default 5 s turned every test below that creates a map red. The bound exists to catch a
+ * hang, the same reasoning as `VPK_SEARCH_TIMEOUT` in content.test.ts.
+ */
+const SKY_CHECK_TIMEOUT = 30_000;
+
 interface Created {
   path: string;
   written: boolean;
@@ -98,7 +108,7 @@ describe("write_vmf", () => {
     expect(existsSync(r.path)).toBe(true);
     expect(readFileSync(r.path, "utf8")).toBe(emptyVmf());
     expect(r.bytes).toBeGreaterThan(0);
-  });
+  }, SKY_CHECK_TIMEOUT);
 
   it("refuses to overwrite, because the alternative is deleting a map", async () => {
     const path = join(scratch, "occupied.vmf");
@@ -111,7 +121,7 @@ describe("write_vmf", () => {
     const r = await create("dry.vmf", { dryRun: true });
     expect(r.written).toBe(false);
     expect(existsSync(join(scratch, "dry.vmf"))).toBe(false);
-  });
+  }, SKY_CHECK_TIMEOUT);
 
   it("says the sky was not checked, rather than implying it was", async () => {
     // No game configured is a normal case -- a map for a game this machine does not have
@@ -125,7 +135,7 @@ describe("write_vmf", () => {
     }
     // Either way the note reaches the caller, which is the whole point of #62.
     expect(r.note).toContain(r.skybox.note);
-  });
+  }, SKY_CHECK_TIMEOUT);
 
   describe("checking the sky against the game", () => {
     const ready = has.sidecar && has.gameContent;
@@ -138,7 +148,7 @@ describe("write_vmf", () => {
       // What the check does NOT prove, said out loud: the two vbsp "default cubemap"
       // lines are about the .vtf headers, which nothing here reads.
       expect(r.skybox.note).toMatch(/default cubemap/);
-    });
+    }, SKY_CHECK_TIMEOUT);
 
     it.skipIf(!ready)("names skies the game has when the one asked for is absent", async () => {
       const r = await create("made-up-sky.vmf", { skyname: "sky_not_a_real_sky_at_all" });
@@ -167,7 +177,7 @@ describe("write_vmf", () => {
       expect([...sides].sort()).toEqual(["bk", "dn", "ft", "lf", "rt", "up"]);
       // And the file is still written: this reports, it does not refuse.
       expect(r.written).toBe(true);
-    });
+    }, SKY_CHECK_TIMEOUT);
   });
 });
 
@@ -227,7 +237,7 @@ describe("a map created and built through tools alone", () => {
       ctx,
     )) as unknown as { sealed: boolean };
     expect(r.sealed).toBe(true);
-  });
+  }, SKY_CHECK_TIMEOUT);
 
   it("reads as leaking the moment a wall is left out, so the test above means something", async () => {
     const path = await build("holed.vmf", SHELL.slice(0, 5));
@@ -236,7 +246,7 @@ describe("a map created and built through tools alone", () => {
       ctx,
     )) as unknown as { sealed: boolean };
     expect(r.sealed).toBe(false);
-  });
+  }, SKY_CHECK_TIMEOUT);
 
   it.skipIf(!has.toolchain)(
     "seals for vbsp too, which was not written here",
