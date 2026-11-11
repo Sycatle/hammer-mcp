@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
 import type { ToolContext } from "../src/mcp/registry.js";
+import { callSidecar } from "../src/sidecar/client.js";
 import { readGameContentTool, readModelInfoTool } from "../src/tools/content.js";
 import { readSourceGames as readSourceGamesTool } from "../src/tools/games.js";
 import { ctx as sharedCtx, has } from "./support/env.js";
@@ -150,6 +154,63 @@ describe("read_game_content", () => {
     expect(r.total).toBe(0);
     expect(r.results).toEqual([]);
   }, VPK_SEARCH_TIMEOUT);
+
+  /**
+   * #114. `_rt_Camera` and its kind are render targets the engine makes at runtime, never
+   * files; reading them as missing called thirty of Counter-Strike: Source's own materials
+   * broken. Tested on a game built for the test, with a control: a texture that truly is
+   * absent, in the same material, must still be named.
+   */
+  describe("a render target (#114)", () => {
+    const scratch = mkdtempSync(join(tmpdir(), "hammer-rt-content-"));
+    afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+
+    const game = join(scratch, "rtgame");
+    mkdirSync(join(game, "materials", "hmcp"), { recursive: true });
+    writeFileSync(
+      join(game, "gameinfo.txt"),
+      `"GameInfo"\n{\n\tgame\t"Fake"\n\tFileSystem\n\t{\n\t\tSteamAppId\t4000\n` +
+        `\t\tSearchPaths\n\t\t{\n\t\t\tgame+mod\t|gameinfo_path|.\n\t\t}\n\t}\n}\n`,
+    );
+    writeFileSync(
+      join(game, "materials", "hmcp", "monitor.vmt"),
+      `UnlitGeneric\n{\n\t"$basetexture" "_rt_Camera"\n}\n`,
+    );
+    writeFileSync(
+      join(game, "materials", "hmcp", "monitor_broken.vmt"),
+      `UnlitGeneric\n{\n\t"$basetexture" "_rt_Camera"\n\t"$detail" "hmcp/absent_detail"\n}\n`,
+    );
+
+    const find = (pattern: string): Promise<SearchReply> =>
+      callSidecar<SearchReply>(
+        "search_content",
+        { gameDir: game, kind: "material", limit: 100, pattern, details: true },
+        ctx.config,
+        VPK_SEARCH_TIMEOUT,
+      );
+
+    it.skipIf(!has.sidecar)("resolves, because the engine makes it", async () => {
+      const r = await find("hmcp/monitor");
+      const row = r.results.find((x) => x.path === "materials/hmcp/monitor.vmt");
+      expect(row?.resolves).toBe(true);
+      expect(row?.missingTextures).toEqual([]);
+    }, VPK_SEARCH_TIMEOUT);
+
+    it.skipIf(!has.sidecar)("does not hide a texture that is really absent beside it", async () => {
+      const r = await find("hmcp/monitor_broken");
+      expect(r.results[0]!.resolves).toBe(false);
+      expect(r.results[0]!.missingTextures).toEqual(["materials/hmcp/absent_detail.vtf"]);
+    }, VPK_SEARCH_TIMEOUT);
+
+    it.skipIf(!ready)("leaves a stock material that draws one resolvable", async () => {
+      // effects/nightvision draws _rt_FullFrameFB. Measured on Counter-Strike: Source, where
+      // it read as broken before #114; a game that does not ship it has nothing to assert.
+      const r = await search({ pattern: "effects/nightvision", details: true });
+      const row = r.results.find((x) => x.path === "materials/effects/nightvision.vmt");
+      if (!row) return;
+      expect(row.resolves).toBe(true);
+    }, VPK_SEARCH_TIMEOUT);
+  });
 });
 
 describe("a game profile that is not installed", () => {

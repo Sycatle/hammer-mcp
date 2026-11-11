@@ -125,7 +125,12 @@ def _material_details(fsys: Any, rel: str) -> dict[str, Any]:
     try:
         from srctools.vmt import Material
 
-        from dependencies import ENVMAP_KEYWORDS, TEXTURE_PARAMS, _under_materials
+        from dependencies import (
+            ENVMAP_KEYWORDS,
+            TEXTURE_PARAMS,
+            _under_materials,
+            is_engine_texture,
+        )
 
         with fsys[rel].open_str() as fh:
             mat = Material.parse(fh, rel)
@@ -153,6 +158,9 @@ def _material_details(fsys: Any, rel: str) -> dict[str, Any]:
             if low in TEXTURE_PARAMS or (
                 low == "$envmap" and value.lower() not in ENVMAP_KEYWORDS
             ):
+                # A render target is the engine's, made at runtime: never a file (#114).
+                if is_engine_texture(value):
+                    continue
                 tex = _under_materials(value.strip(), ".vtf")
                 if tex in seen:
                     continue
