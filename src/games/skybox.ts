@@ -49,8 +49,14 @@ const unchecked = (why: string): SkyboxCheck => ({
 /**
  * Looks the sky up in the game's own content.
  *
- * One search, not six: `search_content` walks the whole mounted filesystem per call and
- * caches nothing, so a call per face would cost six walks to answer one question.
+ * One search, not six: `search_content` walks the mounted filesystem per call and caches
+ * nothing, so a call per face would cost six walks to answer one question.
+ *
+ * And the walk is told where the skies are. Left to walk all of `materials/`, it cost 8 s on
+ * a Counter-Strike: Source install with a well-used `download/` folder -- longer than the
+ * whole budget of the tests that create a map (#109). `materials/skybox` alone is 0.03 s.
+ * The pattern stays `skybox/*` so the rows are the same ones a caller of read_game_content
+ * would see; only the folder outside it is no longer read.
  */
 export async function checkSkybox(
   skyname: string,
@@ -69,7 +75,7 @@ export async function checkSkybox(
   try {
     result = (await callSidecar(
       "search_content",
-      { gameDir, pattern: "skybox/*", kind: "material", limit: 1000 },
+      { gameDir, pattern: "skybox/*", kind: "material", folder: "materials/skybox", limit: 1000 },
       config,
       120_000,
     )) as Record<string, unknown>;

@@ -45,10 +45,40 @@ def _mount(game_dir: str | None) -> tuple[Any, str | None]:
         return None, f"{type(exc).__name__}: {exc}"
 
 
-def _walk(fsys: Any) -> list[str]:
-    """Every file the mounted chain can see, as engine-relative paths."""
+def _walk_root(folder: Any, prefix: str) -> str | None:
+    """The folder a search walks: the kind's own prefix, or a caller's narrower one under it.
+
+    Walking the whole chain and filtering afterwards is what this replaced (#109). On a
+    Counter-Strike: Source install the six VPKs list in 0.04 s, but the loose trees do not:
+    `cstrike/` is mounted twice by its own gameinfo and `cstrike/download` holds whatever
+    every server ever visited sent, so one search cost 8.2 s -- spent almost entirely on
+    sounds, maps and downloads that the prefix test then threw away. Walking only
+    `materials/` returns the same rows in 2.0 s.
+
+    A narrower `folder` is for callers that know exactly where their files are -- the sky
+    check walks `materials/skybox` in 0.03 s. It is not derived from the pattern: a glob is
+    also tried floating (`*{pattern}`), so `skybox/*` matches `foo/skybox/x`, and guessing a
+    root from the pattern would drop those rows without saying so.
+
+    None means the folder is outside the prefix, where nothing of this kind can be.
+    """
+    root = prefix.rstrip("/")
+    if folder is None or not str(folder).strip("/ "):
+        return root
+    want = str(folder).replace("\\", "/").strip("/ ")
+    if want.lower() == root or want.lower().startswith(prefix):
+        return want
+    return None
+
+
+def _walk(fsys: Any, folder: str) -> list[str]:
+    """Every file the mounted chain can see under `folder`, as engine-relative paths.
+
+    `walk_folder` folds duplicates case-insensitively, as iterating the whole chain did, so
+    a file shadowed by a higher-priority copy is still listed once.
+    """
     out: list[str] = []
-    for f in fsys:
+    for f in fsys.walk_folder(folder):
         try:
             out.append(f.path.replace("\\", "/"))
         except Exception:  # noqa: BLE001,S112
@@ -194,6 +224,25 @@ def search_content(req: dict[str, Any]) -> dict[str, Any]:
             "refused": "a search needs a pattern; an empty one would return the whole game",
         }
 
+    prefix, suffix = (
+        ("materials/", ".vmt") if kind == "material" else ("models/", ".mdl")
+    )
+    folder = _walk_root(req.get("folder"), prefix)
+    if folder is None:
+        return {
+            "gameDir": game_dir,
+            "mounted": False,
+            "mountError": None,
+            "pattern": pattern,
+            "kind": kind,
+            "total": 0,
+            "results": [],
+            "refused": (
+                f"folder {req.get('folder')!r} is not under {prefix!r}, where every "
+                f"{kind} lives, so searching it could only return nothing"
+            ),
+        }
+
     fsys, mount_error = _mount(game_dir)
     if fsys is None:
         return {
@@ -207,12 +256,9 @@ def search_content(req: dict[str, Any]) -> dict[str, Any]:
             "note": "nothing was searched, so an empty result here says nothing about the game",
         }
 
-    prefix, suffix = (
-        ("materials/", ".vmt") if kind == "material" else ("models/", ".mdl")
-    )
     match = _matcher(pattern)
     hits: list[str] = []
-    for path in _walk(fsys):
+    for path in _walk(fsys, folder):
         low = path.lower()
         if not low.startswith(prefix) or not low.endswith(suffix):
             continue

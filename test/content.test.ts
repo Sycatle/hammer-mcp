@@ -1,8 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
 import type { ToolContext } from "../src/mcp/registry.js";
+import { callSidecar } from "../src/sidecar/client.js";
 import { readGameContentTool, readModelInfoTool } from "../src/tools/content.js";
 import { readSourceGames as readSourceGamesTool } from "../src/tools/games.js";
-import { ctx as sharedCtx, has } from "./support/env.js";
+import { GAME, ctx as sharedCtx, has } from "./support/env.js";
 
 const ctx = sharedCtx as unknown as ToolContext;
 const ready = has.sidecar && has.gameContent;
@@ -118,25 +122,105 @@ describe("read_game_content", () => {
   // missing .vtf behind it. The .vmt ships with the game and its textures do not -- which is
   // the purple checkerboard this tool exists to prevent, reported as fine.
   describe("a material whose textures are absent (#77)", () => {
-    it.skipIf(!ready)("reports it as unresolvable, and names what is missing", async () => {
-      const r = await search({ pattern: "nature/blendgrassdirt01", details: true });
-      const row = r.results.find((x) => x.path === "materials/nature/blendgrassdirt01.vmt");
-      expect(row).toBeDefined();
-      expect(row!.resolves).toBe(false);
-      expect(row!.missingTextures).toContain("materials/nature/forest_grass_01.vtf");
-    }, VPK_SEARCH_TIMEOUT);
+    /**
+     * The behaviour, on a game made for the test. Which real material is broken is a fact
+     * about one game's content -- `nature/blendgrassdirt01` is Garry's Mod's, and
+     * Counter-Strike: Source does not ship it at all -- so pinning only that made #77's
+     * check fail on every other game and skip on every machine without one (#109). A
+     * gameinfo, two VMTs and one VTF need neither, only the sidecar.
+     */
+    describe("in a game built for the test", () => {
+      const scratch = mkdtempSync(join(tmpdir(), "hammer-unresolved-"));
+      afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-    it.skipIf(!ready)("reports a material that does draw as resolvable", async () => {
-      const r = await search({ pattern: "brick/brickwall001a", details: true });
-      expect(r.results[0]!.resolves).toBe(true);
-      expect(r.results[0]!.missingTextures).toEqual([]);
-    }, VPK_SEARCH_TIMEOUT);
+      const game = join(scratch, "fakegame");
+      mkdirSync(join(game, "materials", "hmcp"), { recursive: true });
+      writeFileSync(
+        join(game, "gameinfo.txt"),
+        `"GameInfo"\n{\n\tgame\t"Fake"\n\tFileSystem\n\t{\n\t\tSteamAppId\t4000\n` +
+          `\t\tSearchPaths\n\t\t{\n\t\t\tgame+mod\t|gameinfo_path|.\n\t\t}\n\t}\n}\n`,
+      );
+      // A blend whose second texture is absent: #77's shape exactly, a garden that is half
+      // checkerboard. Its first texture exists, so "missing" has to name the right one.
+      writeFileSync(
+        join(game, "materials", "hmcp", "blend_broken.vmt"),
+        `WorldVertexTransition\n{\n\t"$basetexture" "hmcp/present"\n` +
+          `\t"$basetexture2" "hmcp/absent"\n}\n`,
+      );
+      writeFileSync(
+        join(game, "materials", "hmcp", "whole.vmt"),
+        `LightmappedGeneric\n{\n\t"$basetexture" "hmcp/present"\n}\n`,
+      );
+      writeFileSync(join(game, "materials", "hmcp", "present.vtf"), "not a real vtf");
 
-    it.skipIf(!ready)("says nothing about resolution when details were not asked for", async () => {
-      // The default listing opens no VMT at all: a GMod install holds tens of thousands.
-      const r = await search({ pattern: "nature/blendgrassdirt01" });
-      expect(r.results[0]!.resolves).toBeUndefined();
-    }, VPK_SEARCH_TIMEOUT);
+      const find = (args: Record<string, unknown>): Promise<SearchReply> =>
+        callSidecar<SearchReply>(
+          "search_content",
+          { gameDir: game, kind: "material", limit: 100, ...args },
+          ctx.config,
+          VPK_SEARCH_TIMEOUT,
+        );
+
+      it.skipIf(!has.sidecar)("reports it as unresolvable, and names what is missing", async () => {
+        const r = await find({ pattern: "hmcp/blend_broken", details: true });
+        expect(r.mounted).toBe(true);
+        const row = r.results.find((x) => x.path === "materials/hmcp/blend_broken.vmt");
+        expect(row).toBeDefined();
+        expect(row!.resolves).toBe(false);
+        expect(row!.missingTextures).toEqual(["materials/hmcp/absent.vtf"]);
+      }, VPK_SEARCH_TIMEOUT);
+
+      it.skipIf(!has.sidecar)("reports a material that does draw as resolvable", async () => {
+        const r = await find({ pattern: "hmcp/whole", details: true });
+        expect(r.results).toHaveLength(1);
+        expect(r.results[0]!.resolves).toBe(true);
+        expect(r.results[0]!.missingTextures).toEqual([]);
+      }, VPK_SEARCH_TIMEOUT);
+
+      it.skipIf(!has.sidecar)("says nothing about resolution when details were not asked for", async () => {
+        // The default listing opens no VMT at all: a GMod install holds tens of thousands.
+        const r = await find({ pattern: "hmcp/blend_broken" });
+        expect(r.results).toHaveLength(1);
+        expect(r.results[0]!.resolves).toBeUndefined();
+      }, VPK_SEARCH_TIMEOUT);
+    });
+
+    /**
+     * The same check against a game's real content, where someone has measured a broken
+     * material in it. Both entries are from the game's own VPKs, so they hold on any
+     * install of that game rather than on one machine's loose files. A game with no entry
+     * skips: an absent measurement is not a failure.
+     */
+    describe("in the game's own content", () => {
+      const BROKEN: Record<string, { material: string; missing: string }> = {
+        // Found building hmcp_backyard (#77). Its .vmt ships with Garry's Mod; its textures do not.
+        gmod: {
+          material: "nature/blendgrassdirt01",
+          missing: "materials/nature/forest_grass_01.vtf",
+        },
+        // Measured 11/11/2026 against Counter-Strike: Source's cstrike_pak.vpk: one of three
+        // stock blends in it whose textures the game does not have.
+        css: {
+          material: "cs_havana/blendrockmoss002a",
+          missing: "materials/nature/rockwall012a.vtf",
+        },
+      };
+      const known = BROKEN[GAME];
+
+      it.skipIf(!ready || !known)("reports it as unresolvable, and names what is missing", async () => {
+        const r = await search({ pattern: known!.material, details: true });
+        const row = r.results.find((x) => x.path === `materials/${known!.material}.vmt`);
+        expect(row).toBeDefined();
+        expect(row!.resolves).toBe(false);
+        expect(row!.missingTextures).toContain(known!.missing);
+      }, VPK_SEARCH_TIMEOUT);
+
+      it.skipIf(!ready)("reports a material that does draw as resolvable", async () => {
+        const r = await search({ pattern: "brick/brickwall001a", details: true });
+        expect(r.results[0]!.resolves).toBe(true);
+        expect(r.results[0]!.missingTextures).toEqual([]);
+      }, VPK_SEARCH_TIMEOUT);
+    });
   });
 
   it.skipIf(!ready)("finds models as well as materials", async () => {

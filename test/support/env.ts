@@ -42,6 +42,15 @@ export function repoRoot(): string {
 export const REPO = repoRoot();
 export const config: Config = loadConfig(REPO);
 
+/**
+ * The game profile the tools resolve to when a call names none: `gmod` unless configured.
+ *
+ * For the few assertions that pin a fact measured against one game's content -- a material
+ * only Garry's Mod ships, a file Counter-Strike: Source keeps in a VPK instead of loose --
+ * and that are therefore keyed by game rather than asserted everywhere (#109).
+ */
+export const GAME: string = config.game;
+
 /** A minimal ToolContext. The audit log is a sink: no test asserts on it. */
 export const ctx = {
   config,

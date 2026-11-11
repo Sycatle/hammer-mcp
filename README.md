@@ -182,7 +182,10 @@ checkerboard for everyone else.
 returning it so what was packed is visible rather than inferred. It never packs VPK content.
 
 ⚠️ Loose is a **candidate**, not a certainty, and that is measured rather than assumed:
-Garry's Mod ships `detail.vbsp` loose in its own root. No rule separates a mapper's work from
+Garry's Mod ships `detail.vbsp` loose in its own root. (Counter-Strike: Source has one there
+too, but also a copy in `cstrike_pak.vpk`, which its gameinfo searches first — so there the
+VPK answers and the file is not loose. Search-path order decides, not the file's presence on
+disk.) No rule separates a mapper's work from
 a game's loose files — they live under the same install. The asymmetry is what makes erring
 toward inclusion right: packing a stock file wastes kilobytes, missing a custom one ships a
 broken map. `exclude` drops the ones you recognise.
