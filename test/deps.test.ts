@@ -153,3 +153,41 @@ describe.skipIf(!has.sidecar)("loose files versus VPK content", () => {
     expect(r.loose.map((f) => f.path)).toEqual(["detail.vbsp"]);
   }, 300_000);
 });
+
+/**
+ * #114. A render target -- `_rt_Camera`, `_rt_FullFrameFB` -- is made by the engine at
+ * runtime and is never a file, so reporting it missing is a fault nobody can fix. Thirty of
+ * Counter-Strike: Source's own materials read as broken through twelve such names.
+ *
+ * The probe's every face uses dev/dev_measuregeneric01; served here from a game built for
+ * the test, that material draws `_rt_Camera` and names one texture that truly is absent.
+ * The second is the control: the skip must be that narrow, not the check switched off.
+ */
+describe.skipIf(!has.sidecar)("render targets", () => {
+  const scratch = mkdtempSync(join(tmpdir(), "hammer-rt-"));
+  afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+
+  it("are not reported missing, while a texture that is absent still is", async () => {
+    const root = join(scratch, "rtgame");
+    mkdirSync(join(root, "materials", "dev"), { recursive: true });
+    writeFileSync(
+      join(root, "gameinfo.txt"),
+      `"GameInfo"\n{\n\tgame\t"Fake"\n\tFileSystem\n\t{\n\t\tSteamAppId\t4000\n` +
+        `\t\tSearchPaths\n\t\t{\n\t\t\tgame+mod\t|gameinfo_path|.\n\t\t}\n\t}\n}\n`,
+    );
+    writeFileSync(
+      join(root, "materials", "dev", "dev_measuregeneric01.vmt"),
+      `UnlitGeneric\n{\n\t"$basetexture" "_rt_Camera"\n\t"$detail" "hmcp/absent_detail"\n}\n`,
+    );
+
+    const r = await callSidecar<{ missing: Array<{ path: string; kind: string }> }>(
+      "map_dependencies",
+      { path: PROBE, gameDir: root, limit: 50 },
+      ctx.config,
+      300_000,
+    );
+    const textures = r.missing.filter((m) => m.kind === "texture").map((m) => m.path);
+    expect(textures).toEqual(["materials/hmcp/absent_detail.vtf"]);
+    expect(r.missing.some((m) => /_rt_/i.test(m.path))).toBe(false);
+  }, 300_000);
+});

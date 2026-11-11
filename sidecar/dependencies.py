@@ -67,6 +67,21 @@ TEXTURE_PARAMS = (
 # `$envmap` usually names the engine's own cubemap rather than a file.
 ENVMAP_KEYWORDS = {"env_cubemap", "cubemap"}
 
+
+def is_engine_texture(value: str) -> bool:
+    """Whether a texture value names a render target the engine creates, not a file.
+
+    `_rt_Camera`, `_rt_FullFrameFB`, `_rt_WaterReflection`: allocated in memory at runtime,
+    never shipped, so no install has `materials/_rt_camera.vtf` and none ever will (#114).
+    Resolving them as files reported 30 of Counter-Strike: Source's own materials as broken
+    -- nightvision, the flashbang, every camera monitor screen -- through 12 such names, a
+    "missing texture" nobody can fix that teaches a builder to ignore the ones that matter.
+
+    Shared by `_walk_material` here and `content._material_details`, like ENVMAP_KEYWORDS,
+    so the two tools cannot disagree about what is a file.
+    """
+    return value.strip().lower().startswith("_rt_")
+
 # A model needs its siblings or it draws as ERROR. `.phy` is genuinely optional -- a prop
 # with no collision hull is a choice -- so its absence is reported without being an error.
 MODEL_REQUIRED = (".mdl", ".vvd", ".dx90.vtx")
@@ -253,6 +268,8 @@ def _walk_material(
         if low in MATERIAL_PARAMS:
             _walk_material(value.strip(), resolver, seen, found, missing, depth + 1)
         elif low in TEXTURE_PARAMS or (low == "$envmap" and value.lower() not in ENVMAP_KEYWORDS):
+            if is_engine_texture(value):
+                continue
             tex = _under_materials(value.strip(), ".vtf")
             if tex in seen:
                 continue
